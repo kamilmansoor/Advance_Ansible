@@ -1,0 +1,1769 @@
+Under ~/playbooks/ directory create a playbook web1.yml to create a blank file named as /root/myfile.txt under root’s home on web1 node, also make sure this must run for web1 node only.
+
+MODULES:
+
+You can use file module with path and state parameter.
+
+---
+- name: Create a myfile.txt
+  hosts: web1
+  gather_facts: no
+  tasks:
+    - name: Create myfile.txt
+      file:
+        path: /root/myfile.txt
+        state: touch
+
+
+Create a user
+
+---
+- name: creating user
+  hosts: web1
+  tasks:
+      - name: craeting user
+        user: name=angel
+
+here user is the module and name is the parameters
+
+___________________________
+
+FACTS:
+
+Identify the OS distribution of the web1 host using ansible facts. Use the inventory file given in /home/thor/playbooks/web
+Use command ansible -i inventory -m setup web1 | grep distribution
+
+Retreive all the facts of the web1 server and store them in a file at /home/thor/playbooks/web/web-facts.txt. Inventory file is at /home/thor/playbooks/web
+ansible -i /home/thor/playbooks/web/inventory -m setup web1 > /home/thor/playbooks/web/web-facts.txt
+
+____________
+
+
+Ansible COnfiguration FILE
+
+For debugging purposes, we would like to configure Ansible to write logs to a different path than default. Configure Ansible to write logs to /var/log/ansible/ansible.log
+Look for log_path parameter in /home/thor/playbooks/ansible.cfg file.
+
+__________
+
+ssh keygen
+
+On Ansible controller node generate an SSH key with filename ansible under default location (~/.ssh).
+ssh-keygen -t rsa -f ~/.ssh/ansible
+
+
+We would like to establish password-less secure authentication between Ansible controller and web1 node. Use the keys generated in the previous step and do the needful. User ansible's SSH password for web1 node is ansible and during testing the SSH connection use -i <path-to-your-ssh-private-key> with ssh command.
+ssh-copy-id -i /home/thor/.ssh/ansible.pub ansible@web1
+ssh -i /home/thor/.ssh/ansible ansible@web1
+
+
+Write a playbook: ~/playbooks/add_user_with_ssh.yml to create a user: deploy on remote hosts. Its a best practice to ssh using public-key than to use a plain text password. Copy the public key: ~/playbooks/devops.pub to remote hosts inside deploy user's authorized_keys.
+Use inventory file: ~/playbooks/inventory.
+
+---
+- hosts: all
+  tasks:
+    - user:
+        name: deploy
+        state: present
+    - authorized_key:
+        user: deploy
+        key: "{{ lookup('file', 'devops.pub') }}"
+        state: present
+_________________________________________________________________
+
+ADHOC Command
+
+Run the ansible command to gather facts of the localhost and save the output in /tmp/ansible_facts.txt file.
+ansible -m setup localhost >> /tmp/ansible_facts.txt
+
+
+Execute an ad-hoc command to perform a ping connectivity test for the localhost and save the output in /tmp/ansible_ping.txt file.
+ansible -m ping localhost >> /tmp/ansible_ping.txt
+
+Run an adhoc command to perform a ping connectivity to all hosts in the /home/thor/playbooks/inventory file and save the output in /tmp/ansible_all.txt file.
+ansible -m ping -i /home/thor/playbooks/inventory all >> /tmp/ansible_all.txt
+
+Run an adhoc command to run a command on host web1 to print the date and save the output in /tmp/ansible_date.txt file on the ansible controller. Use the command module and argument date. Inventory file is available at /home/thor/playbooks/.
+ansible -m shell -a data -i /home/thor/playbooks/inventory web1 >> /home/thor/kamil.txt
+or ansible -m command -a data -i /home/thor/playbooks/inventory web1 >> /home/thor/kamil.txt
+
+_______________
+
+PRIVILEGE ESCALATION
+
+Which of the following option can be used to enable Ansible to ask for sudo password while running an ad hoc command.
+--ask-become-pass
+
+We want to change the login shell for a remote user while running an Ansible task, which directive will be used to do so?
+become_flags
+
+We have a playbook file.yml under ~/playbooks/web1 that simply creates a file test.txt on node web1. The user used to connect to the host does not have sufficient privileges to create the file on the desired location but has sudo access. Make the appropriate changes so that the user's privileges as elevated when the playbook is run.
+
+---
+-  hosts: web1
+   gather_facts: no
+   become: true
+   tasks:
+     - name: Create a blank file under admin home
+       file:
+         path: /home/admin/test.txt
+         state: touch
+
+
+When the file was created on the host, the owner of the file became root user. However, file was to be created for the admin user. Please make the appropriate changes to the file.yml playbook so that the file is created as user admin
+
+---
+-  hosts: web1
+   gather_facts: no
+   become: true
+   become_user: admin
+   tasks:
+     - name: Create a blank file under admin home
+       file:
+         path: /home/admin/test.txt
+         state: touch
+
+
+
+There is a playbook file.yml under ~/playbooks/web2/ directory. We want to run file.yml playbook as admin user on web2 node, so modify the playbook accordingly. To run the playbook we have created a script web2.sh on the same location, so you can execute the script with command sh web2.sh. We don’t want to store the sudo password in any file due to security reasons. Make the necessary changes so that when the script is run, the playbook must prompt for the become password. ansible user's password on web2 is Passw0rd
+
+---
+- hosts: all
+  gather_facts: no
+  become: true
+  become_user: admin
+  tasks:
+    - name: Create a blank file
+      file:
+        path: /home/admin/test.txt
+        state: touch
+
+ansible-playbook file.yml --ask-become-pass
+
+
+
+Our organization recently introduced changes in security. Going forward we'd like to use doas as privilege escalation tool for all managed nodes without having to update inventories or passing in command line parameters for each node. Make the necessary changes.
+sudo vi /etc/ansible/ansible.cfg
+[privilege_escalation]
+become=True
+become_method=doas
+
+
+
+_________________________________________
+
+YAML SYNTAX AND ERRORS IN PLAYBOOKS
+
+
+Let us explore the environment for our KodeKloud e-commerce LAMP stack application. There are 2 servers - lamp-web and lamp-db. Let us setup the inventory files for that. Create an inventory file at /home/thor/playbooks/lamp-stack-playbooks/inventory to include the following data:
+Hosts: lamp-web, lamp-db
+Groups: db_servers contains lamp-db; web_servers contains lamp-web
+IP Addresses: lamp-web: 172.20.1.100; lamp-db: 172.20.1.101
+Credentials for lamp-web: Username=john Password=john
+Credentials for lamp-db Username=maria Password=maria
+
+[db_servers]
+lamp-db ansible_host=172.20.1.101 ansible_ssh_pass=maria ansible_user=maria
+
+[web_servers]
+lamp-web ansible_host=172.20.1.100 ansible_ssh_pass=john ansible_user=john
+
+---------
+
+Let's add some additional data required for setting up the database and web servers. The data should be associated with the respective servers.
+Database Info:
+mysqlservice=mysqld
+mysql_port=3306
+dbname=ecomdb
+dbuser=ecomuser
+dbpassword=ecompassword
+Web Info:
+httpd_port=80
+repository=https://github.com/kodekloudhub/learning-app-ecommerce.git
+
+[db_servers]
+lamp-db ansible_host=172.20.1.101 ansible_user=maria mysqlservice=mysqld mysql_port=3306 dbname=ecomdb dbuser=ecomuser dbpassword=ecompassword
+
+[web_servers]
+lamp-web ansible_host=172.20.1.100 ansible_user=john httpd_port=80 repository=https://github.com/kodekloudhub/learning-app-ecommerce.git
+
+___________________________________
+
+MODULES - PACKAGES:
+
+Create a playbook httpd.yml under ~/playbooks/ to install httpd package on web1
+---
+- name: install httpd
+  hosts: web1
+  tasks:
+    - name: install httpd
+      yum: 
+         name: httpd
+         state: installed
+
+-----------
+
+We have an rpm available for wget package on URL http://mirror.centos.org/centos/7/os/x86_64/Packages/wget-1.14-18.el7_6.1.x86_64.rpm. Create a playbook with name wget.yml under ~/playbooks to install that rpm on web1 node using yum module.
+
+---
+- name: install rpm 
+  hosts: web1
+  tasks:
+     - name: install rpm
+       yum: name=http://mirror.centos.org/centos/7/os/x86_64/Packages/wget-1.14-18.el7_6.1.x86_64.rpm state=present
+
+---------
+
+There is a playbook under ~/playbooks named as unzip.yml to install unzip package on web1 node. We want to install unzip-5.52 version of this package so before running the playbook make the required changes.
+---
+- hosts: all
+  tasks:
+    - name: Install unzip package
+      yum:
+        name: unzip-5.52
+        state: present
+
+-----------
+We want to install some more packages on web1 node. Create a playbook ~/playbooks/multi-pkgs.yml to install the latest version of sudo package, moreover we already have vsftpd v3.0.2 installed but due to some compatibility issues we want to install vsftpd v2.2.2 so add a task in same playbook to do so.
+---
+- hosts: web1
+  tasks:
+  - yum: name=sudo state=latest
+  - yum: name=vsftpd-2.2.2 state=present allow_downgrade=yes
+
+or 
+
+- name: install pkgs
+  hosts: web1
+  tasks:
+    - name: installing sudo 
+      yum: name=sudo state=latest
+
+    - name: installing vsftpd
+      yum: name=vsftpd version=v2.2.2 state=present allow_downgrade=yes
+
+
+
+_____________________________________
+
+MODULES - SERVICES:
+
+Create a playbook httpd.yml under ~/playbooks directory to make sure httpd service is started on web1 node.
+---
+- name: start httpd
+  hosts: web1
+  tasks:
+    - name: start httpd
+      service: name=httpd state=started
+
+------------
+
+We have a playbook ~/playbooks/file.yml to copy a file with a welcome message under httpd server's document root on web1 node. Make changes in the playbook so that httpd server reloads after copying the file, make sure it does not restart the httpd server.
+
+--- 
+- 
+  gather_facts: false
+  hosts: all
+  tasks: 
+    - 
+      copy: 
+        dest: /var/www/html/index.html
+        src: index.html
+      name: "Copy Apache welcome file"
+      service: "name=httpd state=reloaded"
+
+-------------
+We would like the httpd service on web1 node to always start automatically after the system reboots. Update the httpd.yml playbook you created earlier with the required changes.(for service to start automatically after rebot use enable=true)
+
+---
+- name: start httpd
+  hosts: web1
+  tasks:
+    - name: start httpd
+      service:
+          name: httpd
+          state: started
+          enabled: true
+
+-----------
+We created a playbook ~/playbooks/config.yml to enable port 443 for httpd on web1 node as we want to run nginx on the default port 80 so port 80 needs to be free. Make changes in the playbook so that httpd service restarts after making these change.
+
+---
+- hosts: all
+  gather_facts: no
+  tasks:
+    - name: Make changes in Apache config
+      replace:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "^Listen 80"
+        replace: "Listen 443"
+    - name: starting service
+      service: name=httpd state=restarted
+
+-------------
+
+Create a playbook ~/playbooks/nginx.yml to install nginx on web1 node and make sure nginx service is started and should always start even after the system reboots.
+---
+- hosts: web1
+  tasks: 
+    - name: install ngnix
+      yum: name=nginx state=present
+    - name: restart service
+      service:
+          name: nginx 
+          state: restarted 
+          enabled: true
+
+____________________________________________________________
+
+MODULES – FIREWALLS RULES
+
+Using an Ansible playbook install firewalld on web1 node, start and enable its service as well. Name the playbook as firewall.yml and keep it under ~/playbooks.
+---
+- hosts: web1
+  tasks:
+    - name: install firewalld
+      yum: name=firewalld state=present
+    - name: start service
+      service: name=firewalld state=started enabled=true
+
+------------
+We have a requirement on web1 node to white list web2 node's IP address 172.20.1.101 in firewall. Create and run a playbook ~/playbooks/whitelist.yml to do so. Add IP in internal zone.
+
+---
+- hosts: web1
+  tasks:
+    - name: whitelisting ip
+      firewalld:
+        zone: internal
+        permanent: true
+        source: 172.20.1.101
+        state: enabled
+        immediate: yes
+
+---------------------
+
+We want to block 161/udp port on web1 node permanently. Make a playbook block.yml under ~/playbooks/ directory to do so. Use zone: block
+
+---
+- hosts: web1
+  tasks:
+    - name: port block on web1
+      firewalld:
+          port: 161/udp
+          zone: block
+          permanent: yes
+          immediate: yes
+          state: enabled
+
+---------------------
+
+On web1 node add firewall rule in internal zone to enable https connection from Ansible controller machine and make sure that rule must persist even after system reboot. You can create a playbook https.yml under ~/playbooks/ directory. IP address of ansible controller is 172.20.1.2.
+---
+- hosts: web1
+  tasks:
+    - name: Enable HTTPS for ansible controller
+      firewalld:
+        source: 172.20.1.2
+        service: https
+        zone: internal
+        state: enabled
+        permanent: yes
+
+    - service:
+        name: firewalld
+        state: reloaded
+
+--------------------
+
+We have a playbook ~/playbooks/web2-config.yml, it has some existing code to change apache’s default port 80 to port 8082 as we want to run Apache on port 8082 on web2 node. Make some changes as given below before running the playbook.
+
+A. Add an entry in ~/playbooks/inventory for web2 node, IP address of web2 node is 172.20.1.101 and ssh password and username are same as of web1 (username = root and password = Passw0rd).
+
+B. Update web2-config.yml to install httpd before updating its port in config, also start/enable its service.
+
+C. Install firewalld package and start/enable its service.
+
+D. As now Apache will listen on port 8082 so edit the playbook to add firewall rule in public zone so that Apache can allow all incoming traffic.
+
+
+
+
+---
+- hosts: web2
+  tasks:
+    - name: Install pkgs
+      yum:
+        name: httpd, firewalld
+        state: present
+
+    - name: Start/Enable services
+      service:
+        name: httpd, firewalld
+        state: started
+        enabled: yes
+
+    - name: Change Apache port
+      replace:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "Listen 80"
+        replace: "Listen 8082"
+
+    - name: restart Apache
+      service:
+        name: httpd
+        state: restarted
+
+    - name: Add firewall rule for Apache
+      firewalld:
+        port: 8082/tcp
+        zone: public
+        permanent: yes
+        state: enabled
+        immediate: true
+
+OR
+---
+- hosts: web2
+  tasks:
+    - name: Install pkgs
+      yum:
+        name: httpd, firewalld
+        state: present
+
+    - name: Start/Enable services
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      with_items:
+        - httpd
+        - firewalld
+
+    - name: Change Apache port
+      replace:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "Listen 80"
+        replace: "Listen 8082"
+
+    - name: restart Apache
+      service:
+        name: httpd
+        state: restarted
+
+    - name: Add firewall rule for Apache
+      firewalld:
+        port: 8082/tcp
+        zone: public
+        permanent: yes
+        state: enabled
+        immediate: true
+
+for confirmation:
+ssh root@web2
+firewall-cmd --list-ports --zone=public
+
+____________________________________
+MODULES – FILECONTENT
+
+Create a playbook ~/playbooks/perm.yml to create a blank file /opt/data/perm.txt with 0640 permissions on web1 node.
+--- 
+- hosts: web1
+  tasks: 
+    - name: create a file
+      file:
+        path: /opt/data/perm.txt
+        state: touch
+        mode: 0640
+--------------------
+Using a playbook ~/playbooks/index1.yml create /var/www/html/index.html file on web1 node with content This line was added using Ansible lineinfile module!.
+---
+- hosts: web1
+  tasks: 
+    - name: file with content
+      copy:
+        dest: "/var/www/html/index.html"
+        content: |
+           This line was added using Ansible lineinfile module!
+
+
+OR
+---
+- name: Create index.html on web1
+  hosts: web1
+  tasks:
+  - lineinfile:
+      path: /var/www/html/index.html
+      line: 'This line was added using Ansible lineinfile module!'
+      create: yes
+--------------------
+We have a playbook ~/playbooks/find.yml that recursively finds files in /opt/data directory older than 2 minutes and equal or greater than 1 megabyte in size. It also copies those files under /opt directory. However it has some missing parameters so its not working as expected, take a look into it and make appropriate changes.
+---
+- hosts: web1
+  tasks:
+    - name: Find files
+      find:
+        path: /opt/data
+        age: 120
+        size: 1m
+        recurse: yes
+      register: file
+
+    - name: Copy files
+      command: "cp {{ item.path }} /opt"
+      with_items: "{{ file.files }}"
+
+---------------------------
+In /var/www/html/index.html file on web1 node add some additional content using blockinfile module. Below is the content:
+Welcome to KodeKloud!
+This is Ansible Lab.
+Make sure user owner and group owner of the file is apache, also make sure the block is added at beginning of the file. Create a new playbook for this ~/playbooks/index2.yml
+
+hint: Consider using insertbefore parameter to add line in the beginning of the file.
+
+---
+- hosts: web1
+  tasks:
+    - name: Adding to a beginning of a file
+      blockinfile:
+         path: /var/www/html/index.html
+         owner: apache
+         group: apache
+         insertbefore: BOF
+         content: |
+             Welcome to KodeKloud!
+             This is Ansible Lab.
+
+
+-----------------------
+
+On web1 node we want to run our httpd server on port 8080. Create a playbook ~/playbooks/httpd.yml to change port 80 to 8080 in /etc/httpd/conf/httpd.conf file using replace module. Also make sure Ansible restarts httpd service after making the change. Listen 80 is the parameter that need to be changed in /etc/httpd/conf/httpd.conf
+
+---
+- hosts: web1
+  tasks:
+    - name: change port and start service afterwards
+      replace:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: Listen 80
+        replace: Listen 8080
+
+    - name: restarting service
+      service: 
+        name: httpd
+        state: restarted
+
+OR 
+---
+- name: replace port 80 to 8080
+  hosts: web1
+  tasks:
+  - replace:
+      path: /etc/httpd/conf/httpd.conf
+      regexp: 'Listen 80'
+      replace: 'Listen 8080'
+  - service: name=httpd state=restarted
+________________________________
+MODULES – ARCHIVING
+
+Create an inventory file under ~/playbooks directory on Ansible controller host and add web1 as managed node. IP address of the web1 node is 172.20.1.100, SSH user is root and password is Passw0rd.Create a playbook ~/playbooks/zip.yml to make a zip archive opt.zip of /opt directory on web1 node and save it under /root directory on web1 node itself.
+
+---
+- hosts: web1
+  tasks:
+    - name: creating  zip archive
+      archive:
+        path: /opt
+        dest: /root/opt.zip
+        format: zip
+
+------------------
+On Ansible controller, we have a zip archive local.zip. We want to extract its contents on web1 under /tmp directory. Create a playbook local.yml under ~/playbooks directory to complete the task.
+
+---
+- hosts: web1
+  tasks:
+  - unarchive:
+     src: local.zip
+     dest: /tmp
+
+----------------------
+On web1 node we have an archive data.tar.gz under /root directory, extract it under /srv directory by developing a playbook ~/playbooks/data.yml and make sure data.tar.gz archive is removed after that.
+---
+- name: Extract data.tar.gz on web1
+  hosts: web1
+  tasks:
+  - unarchive:
+      src: /root/data.tar.gz
+      dest: /srv
+      remote_src: yes
+
+  - file: path=/root/data.tar.gz state=absent
+
+
+"remote_src: yes" is used as the "data.tar.gz" file is placed on ansible node not on ansible controller
+OR
+
+---
+- hosts: web1
+  tasks:
+   - name: Extracting a file 
+     unarchive:
+       src: /root/data.tar.gz
+       dest: /srv
+       remote_src: yes
+       remove: yes
+
+-------------------------------
+Create a playbook download.yml under ~/playbooks directory to download and extract the https://github.com/kodekloudhub/Hello-World/archive/master.zip zip archive under /root directory on the web1 node.
+
+---
+- name: Download and extract from URL
+  hosts: web1
+  tasks:
+  -   unarchive:
+       src: https://github.com/kodekloudhub/Hello-World/archive/master.zip
+       dest: /root
+       remote_src: yes
+
+
+---------------------------------
+We have three files on web1 node /root/file1.txt, /usr/local/share/file2.txt and /var/log/lastlog. Create a bz2 archive of all these files and save it under /root directory, name the archive as files.tar.bz2. You can create ~/playbooks/files.yml playbook for it.
+
+- name: Compress multiple files
+  hosts: web1
+  tasks:
+  - archive:
+     path:
+      - /root/file1.txt
+      - /usr/local/share/file2.txt
+      - /var/log/lastlog
+     dest: /root/files.tar.bz2
+     format: bz2
+
+-------------------------------
+We want to setup nginx on web1 node with some sample html code. Create a playbook ~/playbooks/nginx.yml to do so. Below are the details about the task:
+
+a. Install nginx package and start/enable its service.
+
+b. Extract /root/nginx.zip archive under /usr/share/nginx/html directory.
+
+c. Inside /usr/share/nginx/html/index.html replace line This is sample html code with line This is KodeKloud Ansible lab.
+
+- name: Install and configure nginx on web1
+  hosts: web1
+  tasks:
+  - name: Install nginx
+    yum: name=nginx state=installed
+  - name: Start nginx
+    service: name=nginx state=started enabled=yes
+
+  - name: Extract nginx.zip
+    unarchive: src=/root/nginx.zip dest=/usr/share/nginx/html remote_src=yes
+
+  - name: Replace line in index.html
+    replace:
+     path: /usr/share/nginx/html/index.html
+     regexp: This is sample html code
+     replace: This is KodeKloud Ansible lab
+OR
+---
+- name: Executing tasks at node web1
+  hosts: web1
+  tasks:
+   - name: installing ngnix pkg and enabling the service
+     yum:
+       name: nginx
+       state: installed
+   
+   - name: enabling nginx service
+     service:
+       name: nginx
+       state: started
+       enabled: true
+   
+   - name: Extracting the archive
+     unarchive:
+       src: /root/nginx.zip
+       dest: /usr/share/nginx/html
+       remote_src: yes
+
+   - name: Replacing the content
+     replace:
+       path: /usr/share/nginx/html/index.html
+       regexp: This is sample html code
+       replace: This is KodeKloud Ansible lab
+_________________________________________________________________________________
+MODULES – USERS AND GROUPS
+Write a playbook create_user.yml to create a user named admin with group: admin and uid: 2048
+NOTE: Your playbook must be placed inside folder: /home/thor/playbooks/. Run this playbook for all servers which are listed in /home/thor/playbooks/inventory file.
+
+---
+- hosts: all
+  tasks:
+   - name: first needs to create a group
+     group:
+      name: admin
+      state: present
+   - name: creating a user
+     user:
+      name: admin
+      group: admin
+      uid: 2048
+
+------------------------
+Suppose Sabin Nepal joined your team on the first day of 2020 as a special contractor to work for a span of 3 years, ie, till the end of the year 2023. He needs his accounts on the remote hosts till his work span.
+Write a playbook add_user.yml to create his user account with username neymarsabin that would be expiring after 3 years. The expires option on the users module is in the epoch. So Sunday, December 31, 2023 11:59:59 PM GMT== 1704067199 as epoch time
+Remember: your playbook must be placed inside /home/thor/playbooks and use inventory file there
+
+---
+- hosts: all
+  tasks:
+   - name: creating a user whose account gonna be expire after a certain period 
+     user:
+      name: neymarsabin
+      expires: 1704067199
+
+_____________________________________________________
+MODULES – SCHEDULED TASKS
+Create a playbook ~/playbooks/lastlog.yml to add a cron job Clear Lastlog on node00 to empty the /var/log/lastlog logs file. The job must run at 12am everyday. You can use the command echo “” > /var/log/lastlog to empty the lastlog file and schedule should be 0 0 * * *.
+REMEMBER: This playbbok will add a cron job at the ansible node. After runing the playbook at ansible controller, you can view this cron job by ssh into the node00 and see the cron job there using "crontab -e"
+
+---
+- hosts: node00
+  tasks:
+   - name: Cron job schedule
+     cron:
+       minute: 0
+       hour: 0
+       job: echo “” > /var/log/lastlog"
+
+OR
+
+---
+- name: Create a cron job to clear last log
+  hosts: node00
+  tasks:
+   - name: Create cron job
+     cron:
+       name: "Clear Lastlog"
+       minute: "0"
+       hour: "0"
+       job: echo "" > /var/log/lastlog
+-----------------------------------------------
+We have a script /root/free.sh on node00 that is used to check the free system memory. We would like to create a cron Free Memory Check to execute this script after every 2 hour (i.e 12am, 2am, 4am etc), the command to execute the script is sh /root/free.sh and schedule should be 0 */2 * * *.
+---
+- name: Create a cron job to run free.sh script
+  hosts: node00
+  tasks:
+   - name: Create cron job
+     cron:
+       name: "Free Memory Check"
+       minute: "0"
+       hour: "*/2"
+       job: "sh /root/free.sh"
+
+---------------------------------
+We had a different cron earlier by the name Check Memory, to execute a different script - /root/free.sh on node00. That job was configured to run every 1 hour. However as we have now a new Cronjob configured let us get rid of the old one. Create a playbook ~/playbooks/remove_cron.yml to remove this cron from node00.
+HINT: Take care about exact name of the cron Check Memory.
+
+
+---
+- hosts: node00
+  tasks:
+   - name: removing a old cron from node00
+     cron:
+      name: Check Memory
+      state: absent
+
+--------------------------
+Due to some disk space limitations, we want to cleanup the /tmp location on node00 host after every reboot. Create a playbook ~/playbooks/reboot.yml to add a cron named cleanup on node00 that will execute after every reboot and will clean /tmp location. The command should be rm -rf /tmp/*.
+
+---
+- hosts: node00
+  tasks:
+   - name: cleanup
+     cron:
+      name: "cleanup"
+      special_time: reboot
+      job: rm -rf /tmp/*
+
+------------------------
+On node00 we want to keep the installed packages up to date, so we would like to run yum updates regularly. Create a playbook ~/playbooks/yum_update.yml and create a cron job as described below:
+
+a. Do not add cron directly using crontab instead create a cron file /etc/cron.d/ansible_yum.
+
+b. The cron must run on every Sunday at 8:05 am.
+
+c. The name of the cron must be yum update.
+
+d. Cron should be added for user root
+
+Use command yum -y update
+
+---
+- hosts: node00
+  tasks:
+   - name: Cron running 
+     cron: 
+      name: yum update
+      minute: 5
+      hour: 8
+      weekday: 0
+      user: root
+      job: yum -y update
+      cron_file: ansible_yum
+
+OR 
+---
+- name: Create cron for yum
+  hosts: node00
+  gather_facts: no
+  tasks:
+    - name: Creates a cron
+      cron:
+        name: yum update
+        weekday: 0
+        minute: 5
+        hour: 8
+        user: root
+        job: "yum -y update"
+        cron_file: ansible_yum
+
+________________________________________________________________
+Variable Precedence 
+
+Remember: variable defined at hosts level takes precedence over variable defined at group level in ansible inventory file
+ 
+VARIABLE REGISTER
+
+Symlinks are common in practice while configuring services. Write a playbook which when executed, creates a file /tmp/by_ansible on the remote hosts. This file must contains the facts/info of /var/run file.
+A playbook is already at /home/thor/playbooks/playbook.yml for you to start. The remote hosts are listed in the inventory file: /home/thor/playbooks/inventory. Please complete the task on that file.
+To test it with: ansible-playbook -i inventory playbook.yml
+
+---
+- hosts: all
+  gather_facts: no
+  tasks:
+    - name: stat module help to find the file info
+      stat:
+        path: /var/run
+      register: your_variable
+
+    # for your reference, check the outputs of these
+    - debug: var=your_variable
+
+    # your code goes here...
+    - shell: echo "{{your_variable}}" > /tmp/by_ansible
+
+------------------------------
+A friend of yours came to you with this broken playbook: /home/thor/playbooks/help_me_fix_it.yml. Help him fix it.
+
+The playbook is supposed to get information about the operating system of the remote hosts and save it to file /tmp/output.txt . Please use the inventory: /home/thor/playbooks/inventory for this task.
+
+Once completed, please test as: ansible-playbook -i inventory help_me_fix_it.yml
+
+
+
+
+---
+- name: help me fix it playbook
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: alternative way to gather facts about remote host
+      setup: filter='ansible_dist*' 
+      register: facts
+
+    - debug: var=facts
+
+    - shell: echo "{{facts}}" > /tmp/output.txt
+
+
+___________________________________________________________
+Magic Variables
+
+Which of the following is not a magic variable ?
+ansible_node_name
+
+
+Which of the following magic variable is used to fetch the information about current running version of ansible ?
+ansible_version
+
+
+
+We have an inventory file ~/playbooks/inventory in which two hosts are defined, we have defined dns_server=8.8.8.8 variable for node01.host managed node only. Write a playbook ~/playbooks/variable.yml to run a shell task for all managed nodes so that it picks node01.host hosts’s dns_server for all managed nodes and save the output of this task in /tmp/variable.txt on each managed node.
+
+---
+- name: my playbook
+  hosts: all
+  tasks:
+   - name: my playbook
+     shell: "echo {{hostvars['node01.host'].dns_server}}  >> /tmp/variable.txt"
+
+-------------------------------
+We have a playbook ~/playbooks/hosts.yml to add some entries in /etc/hosts file on node00.host managed node. It has a missing variable for inventory hostname of the node. Add the variable and run the playbook. Note: If IP address of the node is 1.1.1.1 then, the final entry in /etc/hosts file should look like:
+node00.host 1.1.1.1
+
+---
+- hosts: node00.host
+  gather_facts: yes
+  tasks:
+  - shell: "echo  {{ inventory_hostname  }} {{ ansible_default_ipv4.address }} >> /etc/hosts"
+
+_______________________________
+LABS – JINJA2 – TEMPLATES
+
+Question#1 lamp stack deployment
+
+jab kisi file ko template file ma convert karte hain to file k name k last mai .j2 extension ajati hai aur is .j2 extension file ko templates folder k ander move karadete hain. original file "files" k folder k ander se remove hojati hai aur "templates" k folder mai daalte hain. template ka folder us directory mai create hota hai jis directory mai playbook store hoti hai. playbook mai jakar "copy" module ki jaga "template" replace hojata hai aur src: mai .j2 file ka ansible controller mai jo path ho wo define karte hain like "scr: /home/thor/playbooks/lamp-stack-playbooks/templates/db-load-script.sql.j2"
+
+
+Remember how ansible work with template files:
+jab hum playbook mai src:path-to-.j2 file define karte hain to ansible sab se pehle us .j2 file ko read karta hai template k folder mai jakar. phir us .j2 file mai jo variable defne hote hain un variables ko jakar inventory file mai read/check karta hai phir task execute hota hai.But ansible ko kese pata k ye variables inventory file mai kis host k lye yani kis host k against define hain q k inventory ma tou kafi hosts define hosakte hain aur un k avariables bh same hosakte hain so how ansible read those variables for correct host??
+
+Answer: Playbook mai "src:path-to-.j2 file" jis play k under hoga wahan "hosts:***" define hota hai us host k against inventory file mai jo varibles define hon wo read karega.
+So order of execution is:  check playbook under which hosts the task is going to execute like hosts: host1. then check the template file variables. lastly call variables under the correct host(host1) from inventory file.
+----------------------------------------
+
+Now the scenario arises jab playbook mai mjhe hosts:web_server k lye task execute karna ho BUT template file ma jo variables define ho wo kisi aur host k against ho yani template file(.j2 file) mai inventory se jo variables call karne hon wo db server k hon to phir magic variables ka concept ata hai
+
+Question#4: (Magic Variable)
+ -------------------------------
+orignial playbook:
+---
+- hosts: web_server
+  tasks:
+  - template: scr: ...../template/index.html.j2
+
+
+template file under template directory
+
+{{hostvars['lamp-db']['ansible_facts']['eth0']['ipv4']['address'] }}, {{ hostvars['lamp-db']['dbuser'] }}, {{ hostvars['lamp-db']['dbpassword'] }}, {{ hostvars['lamp-db']['dbname'] }}
+
+
+inventory file
+
+[db_servers]
+lamp-db ansible_host=172.20.1.101 ansible_ssh_private_key_file=/home/thor/.ssh/maria ansible_user=maria mysqlservice=mysqld mysql_port=3306 dbname=ecomdb dbuser=ecomuser dbpassword=ecompassword
+
+-------------------------------
+LABS – CONDITIONALS
+
+
+We are tasked to deploy an HTTP webserver using Ansible Playbooks. Install apache web server on all the hosts in the inventory /home/thor/playbooks/inventory. Note that they are of different flavours i,e. Ubuntu and CentOS. Develop a playbook /home/thor/playbooks/install_apache.yml that would install apache on both Ubuntu and CentOS. Note that the package name is apache2 on Ubuntu and httpd on CentOS
+
+---
+- hosts: all
+  tasks:
+    - apt:
+       name: apache
+       state: present
+      when: ansible_distribution == "Ubuntu"
+    - yum:
+       name: httpd
+       state: present
+      when: ansible_distribution == "CentOS"  
+
+-----------------------------
+Check if git package is installed on web2. Create a file /tmp/is_git_installed.txt, file's content should be based on the condition:
+If git is installed, print its installed version to the file and if git is absent, content must be: Oops, git is missing. Write a playbook at /home/thor/playbooks/check_if_missing.yml and use the inventory file /home/thor/playbooks/inventory
+Note: web2 is a ubuntu host.
+
+---
+- hosts: web2
+  tasks:
+   - shell: git --version
+     register: output
+     ignore_errors: true
+    
+   - debug: var=output 
+   - shell: echo 'Oops, git is missing' > /tmp/is_git_installed.txt
+     when: output.rc != 0
+
+   - shell: git --version > /tmp/is_git_installed.txt
+     when: output.rc == 0
+
+
+OR
+
+---
+- hosts: web2
+  tasks:
+    - shell: git --version
+      register: output
+      ignore_errors: true
+
+    - shell: echo 'Oops, git is missing' > /tmp/is_git_installed.txt
+      when: output.rc != 0
+
+    - shell: git --version
+      when: output.rc == 0
+
+
+---------------------------
+Help your friend fix this playbook /home/thor/playbooks/copy_file_only_if.yml.
+Your firend is trying to copy this script /home/thor/playbooks/report_status.sh to web2 at location /usr/local/bin/report_status.sh based on a condition: if variable copy_file_only_if=true.
+Problem is: Even though (s)he is passing True or true the boolean variable set this way is being evaulated as string and the conditional is being skipped as Conditional result was False
+Please use the inventory file /home/thor/playbooks/inventory.
+
+-----------------
+Check if report_status.sh copied earlier to web2 remote host is executable or not. If it is not executable, log the message: File report_status.sh is not executable, making it executable... in file /tmp/change.log on web2 remote host and make it executable.
+Develop a playbook /home/thor/playbooks/make_it_executable.yml and use the inventory file /home/thor/playbooks/inventory.
+
+
+
+- hosts: web2
+  gather_facts: no
+  vars:
+    remote_dest: /usr/local/bin/report_status.sh
+  tasks:
+    - stat:
+        path: "{{remote_dest}}"
+      register: file_status
+
+    - debug: var=file_status
+    - shell: echo "File report_status.sh is not executable, making it executable..." > /tmp/change.log
+      when: file_status.stat.exists and file_status.stat.executable == false
+
+    - name: Make the script executable
+      file:
+        path: "{{remote_dest}}"
+        mode: 0775
+
+-----------------------
+The script report_status.sh executes a command to test if you are still vulnerable to Shellshock Vulnerability. The script outputs vulnerable if you are still vulnerable else echos not vulnerable. Note: You don't need to modify anything on the script.
+
+Write a playbook /home/thor/playbooks/check_if_vulnerable.yml and execute that script report_status.sh you copied earlier to test if you are vulnerable. If you are still vulnerable add a play to update package bash to the latest version. Use inventory /home/thor/playbooks/inventory.
+
+
+---
+- hosts: web2
+  gather_facts: no
+  tasks:
+    - name: Run a script
+      shell: sh /usr/local/bin/report_status.sh
+      register: test
+    - debug:
+        var: test
+
+------------------
+
+The script report_status.sh executes a command to test if you are still vulnerable to Shellshock Vulnerability. The script outputs vulnerable if you are still vulnerable else echos not vulnerable. Note: You don't need to modify anything on the script.
+
+Write a playbook /home/thor/playbooks/check_if_vulnerable.yml and execute that script report_status.sh you copied earlier to test if you are vulnerable. If you are still vulnerable add a play to update package bash to the latest version. Use inventory /home/thor/playbooks/inventory
+
+---
+- hosts: web2
+  gather_facts: no
+  tasks:
+    - name: Run a script
+      shell: sh /usr/local/bin/report_status.sh
+      register: test
+    - debug:
+        var: test
+
+
+--------------------
+Develop a playbook - /home/thor/playbooks/install_packages.yml - to install an extra package htop on web2 node. The package name htop must be passed as a value to a variable extra_packages with the -e option in the command line while running the playbook. The playbook install_packages.yml already has some exiting code, modify the task install extra packages so that it only runs if extra_packages variable is defined and it has value htop. At the end playbook must be able to install this extra package on web2 node while passing correct values in the extra vars i.e -e.
+Use inventory from /home/thor/playbooks/inventory.
+
+---
+- hosts: web2
+  gather_facts: no
+  tasks:
+    - name: install nginx
+      apt: name=nginx state=present
+      tags: [install_core]
+
+    - name: install extra packages
+      apt: name={{item}}
+      with_items: "{{extra_packages}}"
+      when: extra_packages is defined and extra_packages == "htop"
+
+_____________________________________________________________________________
+LABS – BLOCKS
+
+We have three web nodes that are managed by Ansible. There is an inventory file ~/playbooks/inventory on Ansible controller which has all these three nodes added. Create a playbook ~/playbooks/blocks.yml on Ansible controller to install httpd web server and start its service. We need the tasks to be run only on CentOS based web nodes.
+Create the playbook using blocks to logically group the tasks (installation and service start) so that even if we run playbook for all hosts that are in inventory, the tasks are run only on CentOS based nodes.
+
+
+---
+- hosts: all
+  tasks:
+    - block:
+        - name: installing httpd web server on centos
+          yum: name=httpd state=present
+
+
+        - name: start service of httpd
+          service: name=httpd state=started
+
+      when: ansible_distribution == "CentOS"
+
+--------------------------------------
+Make a copy of the playbook you just created - ~/playbooks/blocks.yml to ~/playbooks/blocks_rescue.yml. Update the new playbook as per below details:
+a. Add a rescue section under the block so that if the task fails for any of the managed node the rescue section should display a message in the form:
+Playbook has failed for web3 node
+Use {{ inventory_hostname}} in place of web3 so that correct value can be picked for each node
+
+---
+- hosts: all
+  tasks:
+    - block:
+        - name: installing httpd web server on centos
+          yum: name=httpd state=present
+   
+
+        - name: start service of httpd
+          service: name=httpd state=started
+
+      when: ansible_distribution == "CentOS"  
+
+      rescue:
+        - name: Rescue block 
+          debug:
+           msg: Playbook has failed for {{ inventory_hostname }}  node 
+
+---------------------------
+
+We just created a new playbook at ~/playbooks/blocks_always.yml. This playbook creates a file on all web nodes and performs some tasks on them. The last task that prints This task always runs! must always run. However, the playbook fails at the second task and as a result the third and fourth task does not run. We do not need to fix the second task for now, but by using always section we want the last task to always run regardless of status of other tasks before it.
+Add an always section and configure the last task to always run. Do not modify any other task.
+
+- hosts: all
+  tasks:
+    - name: Create a file
+      block:
+        - file:
+            path: /tmp/file.txt
+            state: touch
+        - name: This will fail
+          command: /bin/false
+        - debug:
+            msg: "This will never run"
+      always:
+        - debug:
+            msg: "This task always runs!"
+
+
+__________________________________________________________
+LABS – ERROR HANDLING
+
+
+We have a playbook at ~/playbooks/httpd.yml to install httpd web server on all web nodes. The inventory file at ~/playbooks/inventory has these web nodes added. Update playbook so that if any task fails for any of the web nodes the playbook should exit for all hosts.
+
+---
+- name: Install httpd
+  hosts: all
+  gather_facts: no
+  any_errors_fatal: true
+  tasks:
+    - name: Install httpd
+      yum:
+        name: httpd
+        state: present
+
+    - name: start service
+      service:
+        name: httpd
+        state: started
+
+
+--------------------------------------
+
+A playbook at ~/playbooks/httpd_errors.yml runs tasks on web1 node only. However, there is a faulty task in it. We want to ignore the failed task so that the playbook can proceed to the next task. Make the appropriate changes inside the playbook to ignore the second task. Use inventory file ~/playbooks/inventory .Do not try to fix the failed task.
+
+
+---
+- name: Install httpd
+  hosts: web1
+  gather_facts: no
+  tasks:
+    - name: Install httpd
+      yum:
+        name: httpd
+        state: present
+
+    - name: Do not remove this task
+      command: /bin/false
+      register: results
+      ignore_errors: true
+
+    - shell: "echo {{ results.msg }} > /tmp/output"
+    
+    - name: start service
+      service:
+        name: httpd
+        state: started
+
+-------------------------------------------
+The playbook ~/playbooks/httpd_check_errors.yml installs httpd on web1 node, then checks for errors in the error log and then starts the httpd service.
+
+Our goal is for the playbook to fail if the error check (second task) detects errors in the log file. However, with the current playbook, the error check (second task) has no impact as it is only viewing the error log file. Update the playbook so that it fails if it detects a string Error in the file /var/log/httpd/error_log.
+
+The task is already there. Only implement error handling. Use ~/playbooks/inventory file to test the playbook that is already present on ansible controller.
+
+---
+- name: Install httpd
+  hosts: web1
+  gather_facts: no
+  tasks:
+    - name: Install httpd
+      yum:
+        name: httpd
+        state: present
+    - name: Check httpd error logs
+      command: cat /var/log/httpd/error_log
+      register: results
+      failed_when: '"Error" in results.stdout'
+
+    - name: start service
+      service:
+        name: httpd
+        state: started
+
+    - name: Create a file
+      file:
+        path: /tmp/file
+        state: touch
+
+NOTE: By default, Ansible runs each task on all hosts before starting the next task on any host. Pehle ek task ko sare nodes pe deploy karega phir next task pe move karega. This is called linear strategy and the one which is there in ansibleby default.
+
+The second strategy is the free strategy in which sare tasks sari nodes pe parallel apply honge. Single task simultaneously sari nodes pe apply honge 
+
+The last strategy is the serial which is like linear but takes no of nodes at a time
+
+https://kodekloud.com/topic/manage-parallelism/
+____________________________________________________________________________
+LABS – PARELLELISM
+
+There are three nodes we are managing using Ansible. All of them are already added in ~/playbooks/inventory file present on Ansible controller. We have a playbook at path ~/playbooks/httpd.yml to install/configure httpd web server on all managed nodes. Update the playbook to use free strategy
+
+---
+- name: Install httpd
+  hosts: all
+  strategy: free
+  gather_facts: no
+  tasks:
+    - name: Install htpd
+      yum:
+        name: httpd
+        state: present
+
+    - name: start service
+      service:
+        name: httpd
+        state: started
+
+-----------------------------
+Revert the previous change made to the playbook ~/playbooks/httpd.yml to remove the free strategy and let Ansible use the default linear strategy. Make changes in this playbook to process only 1 server in a single batch i.e Ansible must execute tasks on a single server at a time.
+
+---
+- name: Install httpd
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: Install htpd
+      yum:
+        name: httpd
+        state: present
+
+    - name: start service
+      service:
+        name: httpd
+        state: started
+
+_________________________________________
+FILE SEPARATION
+
+We have an inventory file defined in the /home/thor/playbooks/web-playbooks directory. Move all host variables into a file for each of the server under a host_vars directory. The inventory file is located at /home/thor/playbooks/web-playbooks/inventory. You may edit its contents but not its filename or location
+
+Follow below given steps:
+
+cd playbooks/web-playbooks/
+mkdir host_vars
+Create vars file for web1
+
+vi host_vars/web1.yml
+Add below given content
+
+ansible_host: 172.20.1.100
+dns_server: 8.8.8.8
+size: big
+Create vars file for web2
+
+vi host_vars/web2.yml
+Add below given content
+
+ansible_host: 172.20.1.101
+dns_server: 8.8.8.8
+size: small
+
+Remove all vars from the inventory file inventory should look like
+
+[web_servers]
+web1
+web2
+---------------------------------------------------
+
+The dns_server details are common to both servers. Move it to a separate variable file under group_vars (create if doesn't exist) and remove from host_vars.
+
+Follow below given steps:
+
+cd playbooks/web-playbooks/
+mkdir group_vars
+Create group vars file
+
+vi group_vars/web_servers.yml
+Add below given content
+
+dns_server: 8.8.8.8
+Remove the dns_server var from the hosts var files i.e web1.yml and web2.yml
+
+web1.yml should look like
+
+ansible_host: 172.20.1.100
+size: big
+
+web2.yml should look like
+
+ansible_host: 172.20.1.101
+size: small
+
+
+
+--------------------------------
+We have a playbook playbook.yml, inventory and other data in /home/thor/playbooks/db-playbooks directory. When we run the playbook it should print the value of the ntp_server configured on the db servers. However right now it says VARIABLE IS NOT DEFINED. Identify and fix the issue.
+
+cd /home/thor/playbooks/db-playbooks/
+mv group_vars/db.yml group_vars/db_servers.yml
+
+
+----------------------------------
+We have some additional inventory data about database stored at /home/thor/playbooks/general/common/db/db.yml
+Include this in the playbook playbook-2.yml. We are trying to print the db_version.
+
+---
+- name: Print DB server data
+  hosts: all
+  gather_facts: no
+  tasks:
+    - include_vars: /home/thor/playbooks/general/common/db/db.yml
+    - debug:
+        var: db_version
+
+
+-----------------------------------
+We must now install and configure db and web server packages on 2 servers. Some playbooks and task files have been created in the /home/thor/playbooks/full-stack-playbooks directory.
+Finish the playbook.yml to include the tasks in the tasks directory.
+
+Update playbook.yml as per below given code
+---
+- name: Configure full stack server
+  hosts: f-server-1
+  gather_facts: no
+  tasks:
+    - include_tasks: tasks/install-db-server.yml
+    - include_tasks: tasks/install-web-server.yml
+
+
+___________________________________________________
+PROJECT – FILE SEPARATION
+
+Let us continue to improve our lamp stack project. Now that we have learned to organize tasks into separate files, let's move the variables to it's respective files. Create a hostvars and groupvars directory and move all variables to them. No variables to be defined in the main inventory file. Only the below parameters are to be configured as host variables. All other parameters are to be configured as group variables for the respective groups:
+
+Host Variables:
+ansible_host
+ansible_ssh_private_key_file
+ansible_user
+
+The inventory file is located at /home/thor/playbooks/lamp-stack-playbooks/inventory. You may edit its contents but not its filename or location.
+
+Follow below given steps:
+
+cd /home/thor/playbooks/lamp-stack-playbooks/
+mkdir host_vars
+
+Create vars file for lamp-db
+vi host_vars/lamp-db.yml
+
+Add below given content
+ansible_host: 172.20.1.101
+ansible_ssh_private_key_file: /home/thor/.ssh/maria
+ansible_user: maria
+
+Create vars file for lampweb
+vi host_vars/lampweb.yml
+
+Add below given content
+ansible_host: 172.20.1.100
+ansible_ssh_private_key_file: /home/thor/.ssh/john
+ansible_user: john
+
+Create group_vars directory
+mkdir group_vars
+
+Create group vars file for db_servers
+vi group_vars/db_servers.yml
+
+Add below given content
+mysqlservice: mysqld
+mysql_port: 3306
+dbname: ecomdb
+dbuser: ecomuser
+dbpassword: ecompassword 
+
+
+Create group vars file for web_servers
+vi group_vars/web_servers.yml
+
+Add below given content
+httpd_port: 80
+repository: https://github.com/kodekloudhub/learning-app-ecommerce.git
+
+Update inventory
+
+vi inventory
+Add below given content
+
+[db_servers]
+lamp-db
+
+[web_servers]
+lampweb
+
+-----------------------------------
+Let's move the tasks to 3 separate files under the tasks directory. Create 3 files common.yml, db.yml and web.yml and move the associated tasks into each of them. Then include the tasks in the main playbook. Do not modify the tasks or task names. Only move them to the respective files
+
+SOLUTION:
+
+Follow below given steps:
+mkdir tasks
+vi tasks/common.yml
+Add below given content
+
+- name: Install common dependencies
+  yum:
+    name:
+      - libselinux-python
+      - libsemanage-python
+      - firewalld
+vi tasks/db.yml
+Add below given content
+
+- name: Install MariaDB package
+  yum:
+    name:
+      - mariadb-server
+      - MySQL-python
+    state: installed
+
+- name: Create Mysql configuration file
+  template: src=templates/my.cnf.j2 dest=/etc/my.cnf
+
+- name: Start MariaDB Service
+  service: name=mariadb state=started enabled=yes
+
+- name: Start firewalld
+  service: name=firewalld state=started enabled=yes
+
+- name: insert firewalld rule
+  firewalld: port={{ mysql_port }}/tcp permanent=true state=enabled immediate=yes
+
+- name: Create Application Database
+  mysql_db: name={{ dbname }} state=present
+
+- name: gather facts from lampweb
+  setup:
+  delegate_to: "{{ item }}"
+  delegate_facts: True
+  with_items: "{{ hostvars[groups['web_servers'][0]].groups.web_servers }}"
+
+- name: Create Application DB User
+  mysql_user: name={{ dbuser }} password={{ dbpassword }} priv=*.*:ALL host={{ hostvars['lampweb']['ansible_facts']['eth0']['ipv4']['address'] }} state=present
+
+- name: Move db-load-script to db host
+  template:
+    src: templates/db-load-script.sql.j2
+    dest: /tmp/db-load-script.sql
+
+- name: Load Inventory Data
+  shell: mysql -f < /tmp/db-load-script.sql
+vi tasks/web.yml
+Add below given content
+
+- name: Install httpd and php
+  yum:
+    name:
+      - httpd
+      - php
+      - php-mysql
+    state: present
+
+- name: Install web role specific dependencies
+  yum: name=git state=installed
+
+- name: Start firewalld
+  service: name=firewalld state=started enabled=yes
+
+- name: insert firewalld rule for httpd
+  firewalld: port={{ httpd_port }}/tcp permanent=true state=enabled immediate=yes
+
+- name: Set index.php as the default page
+  tags: "Set index.php as the default page"
+  replace:
+    path: /etc/httpd/conf/httpd.conf
+    regexp: 'DirectoryIndex index.html'
+    replace: 'DirectoryIndex index.php'
+
+- name: http service state
+  service: name=httpd state=started enabled=yes
+
+- name: Copy the code from repository
+  git: repo={{ repository }} dest=/var/www/html/  force=yes
+
+- name: Creates the index.php file
+  template: src=templates/index.php.j2 dest=/var/www/html/index.php
+
+________________________________________
+LABS – ROLES
+
+Install the kodekloud1.mysql role on the ansible controller.
+Run the command ansible-galaxy install kodekloud1.mysql
+
+Update the playbook to use the newly created role to configure the database server.
+---
+- name: Deploy MySQL Server
+  hosts: db_server
+  roles:
+    - kodekloud1.mysql
+
+
+Install the geerlingguy.nginx role inside roles directory within the web directory.
+ansible-galaxy install geerlingguy.nginx -p roles
+
+
+----------------------------
+Update the playbook to use the role geerlingguy.nginx to install nginx web server
+Pass in an additional parameter to the role to NOT configure the service to be enabled at startup. Use the parameter nginx_service_enabled. Check roles/geerlingguy.nginx/defaults/main.yml for more details.
+
+
+Update deploy_web.yml playbook as per below given code
+---
+- name: Deploy Web Server
+  hosts: web_server
+  roles:
+    - name: geerlingguy.nginx
+      vars:
+        nginx_service_enabled: no
+
+----------------------------
+Let us now create our own role. Navigate to the firewalld directory. A playbook deploy_firewalld.yml is given that installs and starts the firewalld service. Let us first create our own role and move the tasks into it. Create a role named ansible-role-firewalld under in the firewalld/roles directory.
+
+ansible-galaxy init ansible-role-firewalld
+
+-----------------------------
+Move the tasks from the playbook to the tasks/main.yml file inside the role. Then use the newly created role in the playbook
+
+Move the tasks into tasks/main.yml and update deploy_firewalld.yml as per below given code
+---
+- name: Install common dependencies
+  yum:
+    name:
+      - firewalld
+    state: installed
+- name: Start firewalld
+  service: name=firewalld state=started enabled=yes
+
+Playbook should look like
+
+- name: Configure Firewalld
+  hosts: all
+  roles:
+    - ansible-role-firewalld
+
+_________________________________________________
+PROJECT – ROLES CREATION
+
+Let us continue to improve our lamp stack project. Now that we have learned about roles, let's create re-usable roles and use them in our project.
+Start by creating 3 roles named common, httpd-php and mysql under the roles directory under your project at /home/thor/playbooks/lamp-stack-playbooks
+
+ansible-galaxy init roles/httpd-php
+ansible-galaxy init roles/common
+ansible-galaxy init roles/mysql
+
+----------------------------------------
+Let's move the tasks from the tasks directory to the tasks/main.yml file inside each role. Do not modify the tasks or task names. Only move them to the respective files
+
+Move the tasks to the tasks/main.yml file inside each role.
+cp tasks/common.yml roles/common/tasks/main.yml
+cp tasks/db.yml roles/mysql/tasks/main.yml
+cp tasks/web.yml roles/httpd-php/tasks/main.yml
+---------------------------------------
+If not done already, update the main playbook - deploy-lamp-stack.yml - to use the newly created roles.
+Update deploy-lamp-stack.yml playbook as per below given code
+---
+
+- name: Deploy lamp stack application
+  hosts: all
+  become: yes
+  roles:
+    - common
+
+    # Install and Configure Database
+- name: Deploy lamp stack application
+  hosts: lamp-db
+  become: yes
+  roles:
+    - mysql
+
+- name: Deploy lamp stack application
+  hosts: lampweb
+  become: yes
+  roles:
+    - httpd-php
+________________________________________________
+Ansible Vault
+
+What is the default cipher used by ansible-vault ?
+AES256
+
+Using the ansible vault password file located at /home/thor/playbooks/vault_pass.txt, decrypt the file located at /home/thor/playbooks/decrypt_me.yml
+
+Try option: --vault-password-file /path/to/vault_pass_file while running the command.
+
+
+--------------
+Write a playbook to copy the secret file located at /home/thor/playbooks/secrets_file.txt to all remote hosts at location /root/.secrets_file.txt
+
+Your playbook must be located at: /home/thor/playbooks/copy_secrets.yml
+Remote hosts are placed in inventory: /home/thor/playbooks/inventory
+The secret file is encrypted, please use vault password from /home/thor/playbooks/vault_pass.txt while you execute the playbook.
+
+ANS:
+
+Edit /etc/ansible/ansible.cfg file and make sure to set vault_password_file = /home/thor/playbooks/vault_pass.txt. Also make sure /home/thor/playbooks/vault_pass.txt file permissions are 640
+
+Please use the following YAML file and place it under ~/playbooks/copy_secrets.yml:
+
+---
+
+- hosts: all
+  tasks:
+    - name: copy a secret file to remote hosts
+      copy:
+        src: secrets_file.txt
+        dest: /root/.secrets_file.txt
+
+__________________________________________________
+Dynamic Inventory
+
+Explore the script dynamic_custom.py. How many hosts do you see in the inventory? The inventory script is located at ~/playbooks
+Run: ./dynamic_custom.py --list
+
+
+Run a simple ansible play using the ping module against the hosts using the inventory script dynamic_custom.py.
+The playbook should be called ping.yml created under ~/playbooks
+Please use the following YAML file and place it under ~/playbooks/ping.yml:
+
+---
+- hosts: all
+  tasks:
+    - ping:
+
+______________________________________________
+MOCK EXAMS, MOCK EXAM – 1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+             
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
